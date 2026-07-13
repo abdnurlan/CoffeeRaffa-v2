@@ -1,0 +1,78 @@
+.floating_basket {
+    position: fixed;
+    bottom: 40px;
+    right: 40px;
+    width: 70px;
+    height: 70px;
+    background-color: var(--color-fern, #4d8b55);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    z-index: 999;
+    text-decoration: none;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    animation: fadeInScale 0.6s ease;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.floating_basket:hover {
+    transform: scale(1.1);
+    background-color: #151515;
+}
+
+.icon_container {
+    position: relative;
+    font-size: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.badge {
+    position: absolute;
+    top: -12px;
+    right: -12px;
+    background-color: #e2b239;
+    color: #151515;
+    font-size: 12px;
+    font-weight: 700;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid white;
+}
+
+@keyframes fadeInScale {
+    from {
+        opacity: 0;
+        transform: scale(0.5);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@media screen and (max-width: 768px) {
+    .floating_basket {
+        bottom: 20px;
+        right: 20px;
+        width: 55px;
+        height: 55px;
+    }
+
+    .badge {
+        width: 18px;
+        height: 18px;
+        font-size: 10px;
+        top: -10px;
+        right: -10px;
+    }
+}

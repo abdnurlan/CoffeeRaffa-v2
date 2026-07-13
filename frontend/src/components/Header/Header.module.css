@@ -1,0 +1,276 @@
+.header_text {
+    text-align: center;
+    margin-top: 100px !important;
+    width: 100%;
+}
+
+.header_logo {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 50px;
+    animation: logoFloat 4s ease-in-out infinite;
+}
+
+.header_logo img {
+    width: 350px;
+    filter:
+        drop-shadow(0 15px 40px rgba(0, 0, 0, 0.7)) drop-shadow(0 5px 15px rgba(77, 139, 85, 0.3));
+    transition: transform 0.3s ease;
+}
+
+.header_logo img:hover {
+    transform: scale(1.05);
+    filter:
+        drop-shadow(0 20px 50px rgba(0, 0, 0, 0.8)) drop-shadow(0 8px 20px rgba(77, 139, 85, 0.4));
+}
+
+@keyframes logoFloat {
+
+    0%,
+    100% {
+        transform: translateY(0px);
+    }
+
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+/* Mobile responsive */
+@media screen and (max-width: 768px) {
+    .header_logo {
+        margin-bottom: 30px;
+    }
+
+    .header_logo img {
+        width: 250px;
+    }
+}
+
+@media screen and (max-width: 480px) {
+    .header_logo {
+        margin-bottom: 20px;
+    }
+
+    .header_logo img {
+        width: 180px;
+    }
+}
+
+.header_text h2 {
+    font-size: clamp(3rem, 8vw, 5rem);
+    font-weight: 700;
+    font-family: var(--ff-display);
+    letter-spacing: 0.04em;
+}
+
+.header_text h2:nth-child(1) {
+    color: white;
+}
+
+.header_text p {
+    max-width: 700px;
+    margin: auto;
+    color: white;
+    font-size: 16px;
+    font-weight: 500;
+    padding-top: 16px;
+    line-height: 2;
+}
+
+@media screen and (max-width: 768px) {
+    .header_text h2 {
+        font-size: 48px;
+        text-align: center;
+    }
+
+    .header_text {
+        padding-left: 0px;
+        padding-right: 0px;
+    }
+}
+
+@media screen and (max-width: 300px) {
+    .header_text h2 {
+        font-size: 36px;
+        text-align: center;
+    }
+}
+
+.image {
+    display: flex;
+    width: 100%;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 20px;
+}
+
+.coffeeImage {
+    max-width: 100%;
+    width: 600px;
+    border-radius: 30px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
+
+
+.smoke_wrap {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 0px;
+    width: 100%;
+}
+
+.smoke_wrap img {
+    max-width: 100%;
+}
+
+.smoke_animation {
+    position: relative;
+    max-width: 600px;
+    margin: 0 auto;
+    overflow: visible;
+    padding: 0 50px;
+}
+
+/* Mobile fixes */
+@media screen and (max-width: 768px) {
+    .smoke_animation {
+        padding: 0 20px;
+        max-width: 100%;
+    }
+
+    .coffeeImage {
+        width: 90%;
+        max-width: 400px;
+    }
+}
+
+@media screen and (max-width: 480px) {
+    .smoke_animation {
+        padding: 0 10px;
+    }
+
+    .coffeeImage {
+        width: 85%;
+        max-width: 300px;
+    }
+}
+
+.smoke,
+.smoke2,
+.smoke3 {
+    filter: blur(5px);
+    transform-origin: 50% 50%;
+}
+
+.smoke {
+    animation-delay: 0.5s;
+    animation: smoke1 3s linear infinite;
+}
+
+.smoke2 {
+    animation-delay: 1.5s;
+    animation: smoke2 3s linear infinite;
+}
+
+.smoke3 {
+    animation-delay: 2.5s;
+    animation: smoke3 4s linear infinite;
+}
+
+
+@keyframes coffeeFloat {
+    0% {
+        transform: translateY(0px);
+    }
+
+    50% {
+        transform: translateY(-20px);
+    }
+
+    100% {
+        transform: translateY(0px);
+    }
+}
+
+@keyframes smoke1 {
+    0% {
+        transform: translateY(0px) scale(-1, 1);
+        opacity: 0;
+    }
+
+    25% {
+        transform: translateY(-30px) scale(-1, 1.05);
+        opacity: 0.5;
+    }
+
+    50% {
+        transform: translateY(-60px) scale(-1, 1.1);
+        opacity: 1;
+    }
+
+    75% {
+        transform: translateY(-90px) scale(-1, 1.15);
+        opacity: 0.5;
+    }
+
+    100% {
+        transform: translateY(-120px) scale(-1, 1.2);
+        opacity: 0;
+    }
+}
+
+@keyframes smoke2 {
+    0% {
+        transform: translateY(0px) scale(1);
+        opacity: 0;
+    }
+
+    25% {
+        transform: translateY(-30px) scale(1.05);
+        opacity: 0.5;
+    }
+
+    50% {
+        transform: translateY(-60px) scale(1.1);
+        opacity: 1;
+    }
+
+    75% {
+        transform: translateY(-90px) scale(1.15);
+        opacity: 0.5;
+    }
+
+    100% {
+        transform: translateY(-120px) scale(1.2);
+        opacity: 0;
+    }
+}
+
+@keyframes smoke3 {
+    0% {
+        transform: translateY(0px) scale(1);
+        opacity: 0;
+    }
+
+    25% {
+        transform: translateY(-40px) scale(1.05);
+        opacity: 0.5;
+    }
+
+    50% {
+        transform: translateY(-80px) scale(1.1);
+        opacity: 1;
+    }
+
+    75% {
+        transform: translateY(-120px) scale(1.15);
+        opacity: 0.5;
+    }
+
+    100% {
+        transform: translateY(-160px) scale(1.2);
+        opacity: 0;
+    }
+}

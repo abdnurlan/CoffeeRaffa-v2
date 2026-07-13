@@ -1,0 +1,31 @@
+services:
+  backend:
+    build: ./backend
+    image: coffeeraffa/backend:latest
+    container_name: coffeeraffa_backend
+    restart: unless-stopped
+    environment:
+      DB_PATH: /data/db.sqlite3
+      MEDIA_ROOT: /var/www/images
+      PORT: "8000"
+    volumes:
+      - ./data:/data
+      - ./media:/var/www/images
+    networks: [turnet]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8000/api/health_check/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build: ./frontend
+    image: coffeeraffa/frontend:latest
+    container_name: coffeeraffa_frontend
+    restart: unless-stopped
+    networks: [turnet]
+
+networks:
+  turnet:
+    external: true
+    name: tour-planner_turnet

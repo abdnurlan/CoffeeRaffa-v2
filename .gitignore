@@ -1,0 +1,19 @@
+# --- Frontend (Node/Vite) ---
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+*.log
+
+# --- Backend (Go) ---
+backend/db.sqlite3
+backend/.env
+backend/coffeeraffa
+
+# --- Runtime data (mounted by Docker Compose) ---
+/data/
+/media/
+
+# --- OS / editor ---
+.DS_Store
+.idea/
+.vscode/

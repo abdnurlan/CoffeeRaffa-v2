@@ -1,0 +1,72 @@
+.green_bg {
+    background-color: rgba(77, 139, 85, 0.5);
+}
+
+.bg {
+    background: url('assets/green_parallax.jpg') center;
+    background-attachment: fixed;
+}
+
+.statistics {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-around;
+    padding: 130px 0px;
+    gap: 30px;
+    overflow: hidden;
+}
+
+.statistics_values {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    padding: 40px;
+    border-radius: 32px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: transform 0.3s ease, background 0.3s ease;
+}
+
+.statistics_values:hover {
+    transform: translateY(-10px);
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.statistics_count h2 {
+    font-size: clamp(48px, 12vw, 100px);
+    color: white;
+    font-weight: 700;
+}
+
+.statistics_name h3 {
+    font-size: 24px;
+    color: white;
+    font-weight: 700;
+}
+
+@media screen and (max-width: 1200px) {
+    .statistics {
+        flex-wrap: wrap;
+    }
+
+    .statistics_values {
+        width: 45%;
+        padding-bottom: 50px;
+    }
+}
+
+@media screen and (max-width: 768px) {
+    .bg {
+        background-attachment: scroll;
+        background-size: cover;
+    }
+}
+
+
+@media screen and (max-width: 480px) {
+    .statistics_values {
+        width: 100%;
+    }
+}
