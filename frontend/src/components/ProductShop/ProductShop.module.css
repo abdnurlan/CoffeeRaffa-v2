@@ -23,7 +23,7 @@
 }
 
 .header_h3 h3 {
-  font-family: "Iowan Old Style", "Baskerville", Georgia, serif;
+  font-family: var(--ff-display);
   font-size: clamp(2.4rem, 5vw, 4rem);
   font-weight: 500;
   letter-spacing: -0.03em;
@@ -89,7 +89,7 @@
   place-items: center;
   background: radial-gradient(circle at 70% 20%, #d1b273, transparent 28%), #17301e;
   color: #fff8e9;
-  font-family: "Iowan Old Style", Georgia, serif;
+  font-family: var(--ff-display);
   font-size: 3rem;
 }
 
@@ -114,7 +114,7 @@
 }
 
 .product_info h3 {
-  font-family: "Iowan Old Style", Georgia, serif;
+  font-family: var(--ff-display);
   font-size: 1.35rem;
 }
 
