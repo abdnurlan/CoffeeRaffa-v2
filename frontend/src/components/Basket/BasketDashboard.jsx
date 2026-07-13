@@ -12,8 +12,7 @@ import {
   getTotals,
   resetCart,
 } from "../../features/cartSlice";
-
-const grammages = ["0.250kg", "0.500kg", "1kg"];
+import { formatGrams, formatPrice } from "../../utils/catalog";
 
 const BasketDashboard = () => {
   const cart = useSelector((state) => state.cart);
@@ -33,36 +32,40 @@ const BasketDashboard = () => {
   };
 
   const handleGrammageChange = (cartItem, direction) => {
-    const currentGrammageIndex = grammages.indexOf(cartItem.grammage);
+    const options = cartItem.priceOptions || [];
+    const currentGrammageIndex = options.findIndex(
+      (option) => option.grams === cartItem.selectedGrams,
+    );
     let newGrammageIndex = currentGrammageIndex;
 
-    if (direction === "up" && currentGrammageIndex < grammages.length - 1) {
+    if (direction === "up" && currentGrammageIndex < options.length - 1) {
       newGrammageIndex += 1;
     } else if (direction === "down" && currentGrammageIndex > 0) {
       newGrammageIndex -= 1;
     }
 
-    const newGrammage = grammages[newGrammageIndex];
-    dispatch(changeGrammage({ id: cartItem.id, grammage: newGrammage }));
+    const nextOption = options[newGrammageIndex];
+    if (nextOption) {
+      dispatch(changeGrammage({ id: cartItem.id, grams: nextOption.grams }));
+    }
   };
 
   useEffect(() => {
     dispatch(getTotals());
-  }, [cart, dispatch]);
+  }, [cart.cartItems, dispatch]);
 
   const generateWhatsAppMessage = () => {
     // Create message items with regular line breaks instead of pre-encoded ones
     const items = cart.cartItems
       .map(
         (item) =>
-          `${item.name}: ${item.cartQuantity} × ${item.grammage} - ${item.price * item.cartQuantity
-          } ₼`
+          `${item.name}: ${item.cartQuantity} × ${formatGrams(item.selectedGrams)} - ${formatPrice(item.price * item.cartQuantity)} ₼`
       )
       .join("\n\n");
 
     // Encode the entire message at once
     const encodedMessage = encodeURIComponent(
-      `Sifariş Detalları:\n\n${items}\n\nÜmumi Məbləğ: ${cartTotalAmount} ₼`
+      `Sifariş Detalları:\n\n${items}\n\nÜmumi Məbləğ: ${formatPrice(cartTotalAmount)} ₼`
     );
     const whatsappLink = `https://wa.me/+994558882060/?text=${encodedMessage}`;
 
@@ -133,7 +136,7 @@ const BasketDashboard = () => {
                       <td className={styles.product_quantity}>
                         <div className={styles.grammage_container}>
                           <div className={styles.quantity_number}>
-                            {cartItem.grammage}
+                            {formatGrams(cartItem.selectedGrams)}
                           </div>
                           <div className={styles.quantity_buttons}>
                             <div
@@ -154,10 +157,10 @@ const BasketDashboard = () => {
                         </div>
                       </td>
                       <td className={styles.product_price}>
-                        {cartItem.price} ₼
+                        {formatPrice(cartItem.price)} ₼
                       </td>
                       <td className={styles.product_subtotal}>
-                        {cartItem.price * cartItem.cartQuantity} ₼
+                        {formatPrice(cartItem.price * cartItem.cartQuantity)} ₼
                       </td>
                     </tr>
                   ))}
@@ -198,7 +201,7 @@ const BasketDashboard = () => {
                       <p>Ölçü :</p>
                       <div className={styles.grammage_container}>
                         <div className={styles.quantity_number}>
-                          {cartItem.grammage}
+                          {formatGrams(cartItem.selectedGrams)}
                         </div>
                         <div className={styles.quantity_buttons}>
                           <div
@@ -218,12 +221,12 @@ const BasketDashboard = () => {
                     </div>
                     <div className={styles.product_info_text}>
                       <p>Qiymət :</p>
-                      <p>{cartItem.price} ₼</p>
+                      <p>{formatPrice(cartItem.price)} ₼</p>
                     </div>
                     <div className={styles.product_info_text}>
                       <p>Cəmi :</p>
                       <p className={styles.product_subtotal}>
-                        {cartItem.price * cartItem.cartQuantity} ₼
+                        {formatPrice(cartItem.price * cartItem.cartQuantity)} ₼
                       </p>
                     </div>
                   </div>
@@ -236,7 +239,7 @@ const BasketDashboard = () => {
               </div>
               <div className={styles.cart_total}>
                 <span>Ümumi Məbləğ:</span>
-                <h3>{cartTotalAmount} ₼</h3>
+                <h3>{formatPrice(cartTotalAmount)} ₼</h3>
               </div>
             </div>
             <div className={styles.let_order}>

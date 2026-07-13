@@ -10,3 +10,13 @@ export const API_data = async () => {
     }
 };
 
+export const API_categories = async () => {
+  try {
+    const response = await axios.get("https://api.coffeeraffa.az/api/categories/");
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching categories:", error);
+    throw error;
+  }
+};
+

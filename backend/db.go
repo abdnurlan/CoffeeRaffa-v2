@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 
 	_ "modernc.org/sqlite"
 )
@@ -25,6 +26,12 @@ var schema = []string{
 		"key" varchar(40) NOT NULL PRIMARY KEY,
 		"created" datetime NOT NULL,
 		"user_id" integer NOT NULL UNIQUE REFERENCES "auth_user" ("id") DEFERRABLE INITIALLY DEFERRED)`,
+	`CREATE TABLE IF NOT EXISTS "api_category" (
+		"id" integer NOT NULL PRIMARY KEY AUTOINCREMENT,
+		"name" varchar(100) NOT NULL COLLATE NOCASE UNIQUE,
+		"description" text NOT NULL DEFAULT '',
+		"sort_order" integer NOT NULL DEFAULT 0,
+		"is_active" bool NOT NULL DEFAULT 1)`,
 	`CREATE TABLE IF NOT EXISTS "api_coffee" (
 		"id" integer NOT NULL PRIMARY KEY AUTOINCREMENT,
 		"name" varchar(100) NOT NULL,
@@ -32,7 +39,8 @@ var schema = []string{
 		"img" varchar(100) NULL,
 		"prices" text NOT NULL CHECK ((JSON_VALID("prices") OR "prices" IS NULL)),
 		"quality" text NOT NULL CHECK ((JSON_VALID("quality") OR "quality" IS NULL)),
-		"star" integer NOT NULL)`,
+		"star" integer NOT NULL,
+		"category_id" integer NULL REFERENCES "api_category" ("id") DEFERRABLE INITIALLY DEFERRED)`,
 	`CREATE TABLE IF NOT EXISTS "api_userprofile" (
 		"id" integer NOT NULL PRIMARY KEY AUTOINCREMENT,
 		"user_id" integer NOT NULL UNIQUE REFERENCES "auth_user" ("id") DEFERRABLE INITIALLY DEFERRED,
@@ -52,6 +60,40 @@ var schema = []string{
 		"order_id" bigint NOT NULL REFERENCES "api_order" ("id") DEFERRABLE INITIALLY DEFERRED)`,
 }
 
+func hasColumn(db *sql.DB, table, column string) (bool, error) {
+	rows, err := db.Query(fmt.Sprintf(`PRAGMA table_info(%q)`, table))
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, columnType string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
+}
+
+func migrateCatalog(db *sql.DB) error {
+	hasCategory, err := hasColumn(db, "api_coffee", "category_id")
+	if err != nil {
+		return err
+	}
+	if !hasCategory {
+		if _, err := db.Exec(`ALTER TABLE api_coffee ADD COLUMN category_id integer NULL REFERENCES api_category(id)`); err != nil {
+			return err
+		}
+	}
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS api_coffee_category_id_idx ON api_coffee(category_id)`)
+	return err
+}
+
 func openDB(path string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -62,6 +104,10 @@ func openDB(path string) (*sql.DB, error) {
 			db.Close()
 			return nil, err
 		}
+	}
+	if err := migrateCatalog(db); err != nil {
+		db.Close()
+		return nil, err
 	}
 	return db, nil
 }

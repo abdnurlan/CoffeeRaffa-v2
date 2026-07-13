@@ -34,9 +34,9 @@ const WatchVideo = () => {
                       className={styles.video}
                       src="https://www.youtube.com/embed/ry55AZ5TRC4?si=whEJ9mMz2w2TBwt2"
                       title="YouTube video player"
-                      frameborder="0"
+                      frameBorder="0"
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                      referrerpolicy="strict-origin-when-cross-origin"
+                      referrerPolicy="strict-origin-when-cross-origin"
                       allowfullscreen
                     ></iframe>
                   </div>

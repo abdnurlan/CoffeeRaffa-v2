@@ -1,7 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import styles from "./Footer.module.css";
-import Logo from "/assets/kaffa_logo.png";
 import { FaFacebook, FaInstagram, FaLocationDot, FaPhoneVolume, FaYoutube } from "react-icons/fa6";
 
 const Footer = () => {
@@ -77,7 +76,7 @@ const Footer = () => {
       <div className={styles.footer_copyright}>
         <div className="container">
           <h6 className={styles.copyright_text}>
-            Copyright © 2026 | Nurlan Abdullayev
+            Copyright © 2026 | Codalov.co
           </h6>
         </div>
       </div>

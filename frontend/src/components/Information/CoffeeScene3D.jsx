@@ -7,9 +7,6 @@ import {
     MeshTransmissionMaterial,
     ContactShadows,
     Sparkles,
-    useTexture,
-    Text3D,
-    Center,
     Sphere
 } from '@react-three/drei';
 import { EffectComposer, Bloom, ChromaticAberration } from '@react-three/postprocessing';

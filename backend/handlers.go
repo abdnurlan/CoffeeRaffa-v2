@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -17,14 +18,31 @@ type App struct {
 	MediaRoot string
 }
 
+type Category struct {
+	ID           int64  `json:"id"`
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	SortOrder    int    `json:"sort_order"`
+	IsActive     bool   `json:"is_active"`
+	ProductCount int    `json:"product_count"`
+}
+
+type PriceOption struct {
+	Grams int     `json:"grams"`
+	Price float64 `json:"price"`
+}
+
 type Coffee struct {
-	ID          int64           `json:"id"`
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	Quality     json.RawMessage `json:"quality"`
-	Prices      json.RawMessage `json:"prices"`
-	Star        int             `json:"star"`
-	Img         *string         `json:"img"`
+	ID           int64           `json:"id"`
+	Name         string          `json:"name"`
+	Description  string          `json:"description"`
+	Quality      json.RawMessage `json:"quality"`
+	Prices       json.RawMessage `json:"prices"`
+	Star         int             `json:"star"`
+	Img          *string         `json:"img"`
+	CategoryID   *int64          `json:"category_id"`
+	Category     *Category       `json:"category"`
+	PriceOptions []PriceOption   `json:"price_options"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -50,20 +68,121 @@ func imgURL(r *http.Request, img sql.NullString) *string {
 	return &u
 }
 
+func parseGrams(label string) (int, error) {
+	value := strings.ToLower(strings.TrimSpace(label))
+	value = strings.ReplaceAll(value, " ", "")
+	multiplier := 1.0
+	if strings.HasSuffix(value, "kg") {
+		value = strings.TrimSuffix(value, "kg")
+		multiplier = 1000
+	} else {
+		for _, suffix := range []string{"grams", "gram", "qram", "gr", "qr", "g"} {
+			if strings.HasSuffix(value, suffix) {
+				value = strings.TrimSuffix(value, suffix)
+				break
+			}
+		}
+	}
+	n, err := strconv.ParseFloat(value, 64)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("invalid gram amount %q", label)
+	}
+	grams := int(n*multiplier + 0.5)
+	if grams <= 0 {
+		return 0, fmt.Errorf("invalid gram amount %q", label)
+	}
+	return grams, nil
+}
+
+func priceOptionsFromJSON(raw string) ([]PriceOption, error) {
+	var list []PriceOption
+	if err := json.Unmarshal([]byte(raw), &list); err == nil && list != nil {
+		return normalizePriceList(list)
+	}
+	var legacy map[string]float64
+	if err := json.Unmarshal([]byte(raw), &legacy); err != nil {
+		return nil, err
+	}
+	for label, price := range legacy {
+		grams, err := parseGrams(label)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, PriceOption{Grams: grams, Price: price})
+	}
+	return normalizePriceList(list)
+}
+
+func normalizePriceList(list []PriceOption) ([]PriceOption, error) {
+	byGrams := make(map[int]float64, len(list))
+	for _, option := range list {
+		if option.Grams <= 0 {
+			return nil, fmt.Errorf("grams must be greater than zero")
+		}
+		if option.Price < 0 {
+			return nil, fmt.Errorf("price cannot be negative")
+		}
+		byGrams[option.Grams] = option.Price
+	}
+	normalized := make([]PriceOption, 0, len(byGrams))
+	for grams, price := range byGrams {
+		normalized = append(normalized, PriceOption{Grams: grams, Price: price})
+	}
+	sort.Slice(normalized, func(i, j int) bool { return normalized[i].Grams < normalized[j].Grams })
+	return normalized, nil
+}
+
+func canonicalPrices(raw string) (string, []PriceOption, error) {
+	options, err := priceOptionsFromJSON(raw)
+	if err != nil {
+		return "", nil, err
+	}
+	if len(options) == 0 {
+		return "", nil, fmt.Errorf("at least one gram price is required")
+	}
+	prices := make(map[string]float64, len(options))
+	for _, option := range options {
+		prices[strconv.Itoa(option.Grams)] = option.Price
+	}
+	encoded, err := json.Marshal(prices)
+	return string(encoded), options, err
+}
+
 func scanCoffee(r *http.Request, row interface{ Scan(...any) error }) (Coffee, error) {
 	var c Coffee
 	var img sql.NullString
+	var categoryID sql.NullInt64
+	var categoryName, categoryDescription sql.NullString
+	var categorySortOrder sql.NullInt64
+	var categoryActive sql.NullBool
 	var quality, prices string
-	if err := row.Scan(&c.ID, &c.Name, &c.Description, &quality, &prices, &c.Star, &img); err != nil {
+	if err := row.Scan(
+		&c.ID, &c.Name, &c.Description, &quality, &prices, &c.Star, &img,
+		&categoryID, &categoryName, &categoryDescription, &categorySortOrder, &categoryActive,
+	); err != nil {
 		return c, err
 	}
 	c.Quality = json.RawMessage(quality)
 	c.Prices = json.RawMessage(prices)
+	options, _ := priceOptionsFromJSON(prices)
+	c.PriceOptions = options
 	c.Img = imgURL(r, img)
+	if categoryID.Valid {
+		id := categoryID.Int64
+		c.CategoryID = &id
+		c.Category = &Category{
+			ID: id, Name: categoryName.String, Description: categoryDescription.String,
+			SortOrder: int(categorySortOrder.Int64), IsActive: categoryActive.Bool,
+		}
+	}
 	return c, nil
 }
 
-const coffeeCols = `id, name, description, quality, prices, star, img`
+const coffeeSelect = `SELECT
+	c.id, c.name, c.description, c.quality, c.prices, c.star, c.img,
+	c.category_id, category.name, category.description, category.sort_order, category.is_active
+	FROM api_coffee c
+	LEFT JOIN api_category category ON category.id = c.category_id`
 
 func (a *App) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"message": "Server Running"})
@@ -100,7 +219,7 @@ func (a *App) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) CoffeeList(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.DB.Query(`SELECT ` + coffeeCols + ` FROM api_coffee`)
+	rows, err := a.DB.Query(coffeeSelect + ` ORDER BY category.sort_order, category.name, c.name`)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -124,7 +243,7 @@ func (a *App) CoffeeDetail(w http.ResponseWriter, r *http.Request) {
 		notFound(w)
 		return
 	}
-	row := a.DB.QueryRow(`SELECT `+coffeeCols+` FROM api_coffee WHERE id = ?`, id)
+	row := a.DB.QueryRow(coffeeSelect+` WHERE c.id = ?`, id)
 	c, err := scanCoffee(r, row)
 	if err != nil {
 		notFound(w)
@@ -183,9 +302,25 @@ func (a *App) CoffeeCreate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errs)
 		return
 	}
-	quality := jsonOrDefault(r.FormValue("quality"), "{}")
-	prices := jsonOrDefault(r.FormValue("prices"), "{}")
+	quality := jsonOrDefault(r.FormValue("quality"), `["Medium"]`)
+	priceInput := r.FormValue("price_options")
+	if priceInput == "" {
+		priceInput = r.FormValue("prices")
+	}
+	prices, _, err := canonicalPrices(priceInput)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string][]string{"price_options": {err.Error()}})
+		return
+	}
+	categoryID, err := a.categoryIDFromForm(r.FormValue("category_id"), true)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string][]string{"category_id": {err.Error()}})
+		return
+	}
 	star, _ := strconv.Atoi(r.FormValue("star"))
+	if star < 1 || star > 5 {
+		star = 5
+	}
 
 	img, err := a.saveUpload(r)
 	if err != nil {
@@ -194,14 +329,14 @@ func (a *App) CoffeeCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	res, err := a.DB.Exec(
-		`INSERT INTO api_coffee (name, description, quality, prices, star, img) VALUES (?, ?, ?, ?, ?, ?)`,
-		r.FormValue("name"), r.FormValue("description"), quality, prices, star, img)
+		`INSERT INTO api_coffee (name, description, quality, prices, star, img, category_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		r.FormValue("name"), r.FormValue("description"), quality, prices, star, img, categoryID)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	id, _ := res.LastInsertId()
-	row := a.DB.QueryRow(`SELECT `+coffeeCols+` FROM api_coffee WHERE id = ?`, id)
+	row := a.DB.QueryRow(coffeeSelect+` WHERE c.id = ?`, id)
 	c, _ := scanCoffee(r, row)
 	writeJSON(w, http.StatusCreated, c)
 }
@@ -225,7 +360,7 @@ func (a *App) CoffeeUpdate(w http.ResponseWriter, r *http.Request) {
 
 	set := []string{}
 	args := []any{}
-	for _, f := range []string{"name", "description", "quality", "prices", "star"} {
+	for _, f := range []string{"name", "description", "quality", "prices", "price_options", "star", "category_id"} {
 		if _, ok := r.MultipartForm.Value[f]; !ok {
 			if r.Method == http.MethodPut && (f == "name" || f == "description") {
 				writeJSON(w, http.StatusBadRequest, map[string][]string{f: {"This field is required."}})
@@ -237,9 +372,29 @@ func (a *App) CoffeeUpdate(w http.ResponseWriter, r *http.Request) {
 		switch f {
 		case "star":
 			n, _ := strconv.Atoi(v)
+			if n < 1 || n > 5 {
+				writeJSON(w, http.StatusBadRequest, map[string][]string{"star": {"Must be between 1 and 5."}})
+				return
+			}
 			set, args = append(set, "star = ?"), append(args, n)
-		case "quality", "prices":
-			set, args = append(set, f+" = ?"), append(args, jsonOrDefault(v, "{}"))
+		case "quality":
+			set, args = append(set, "quality = ?"), append(args, jsonOrDefault(v, `["Medium"]`))
+		case "prices", "price_options":
+			prices, _, err := canonicalPrices(v)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string][]string{"price_options": {err.Error()}})
+				return
+			}
+			if !contains(set, "prices = ?") {
+				set, args = append(set, "prices = ?"), append(args, prices)
+			}
+		case "category_id":
+			categoryID, err := a.categoryIDFromForm(v, true)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string][]string{"category_id": {err.Error()}})
+				return
+			}
+			set, args = append(set, "category_id = ?"), append(args, categoryID)
 		default:
 			set, args = append(set, f+" = ?"), append(args, v)
 		}
@@ -259,7 +414,7 @@ func (a *App) CoffeeUpdate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	row := a.DB.QueryRow(`SELECT `+coffeeCols+` FROM api_coffee WHERE id = ?`, id)
+	row := a.DB.QueryRow(coffeeSelect+` WHERE c.id = ?`, id)
 	c, _ := scanCoffee(r, row)
 	writeJSON(w, http.StatusOK, c)
 }
@@ -276,6 +431,172 @@ func (a *App) CoffeeDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
+		notFound(w)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func contains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *App) categoryIDFromForm(value string, required bool) (any, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		if required {
+			return nil, fmt.Errorf("This field is required.")
+		}
+		return nil, nil
+	}
+	id, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || id <= 0 {
+		return nil, fmt.Errorf("Invalid category.")
+	}
+	var active bool
+	if err := a.DB.QueryRow(`SELECT is_active FROM api_category WHERE id = ?`, id).Scan(&active); err != nil {
+		return nil, fmt.Errorf("Category does not exist.")
+	}
+	if !active {
+		return nil, fmt.Errorf("Category is inactive.")
+	}
+	return id, nil
+}
+
+func (a *App) CategoryList(w http.ResponseWriter, r *http.Request) {
+	rows, err := a.DB.Query(`
+		SELECT category.id, category.name, category.description, category.sort_order,
+			category.is_active, COUNT(coffee.id)
+		FROM api_category category
+		LEFT JOIN api_coffee coffee ON coffee.category_id = category.id
+		GROUP BY category.id
+		ORDER BY category.sort_order, category.name`)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	categories := []Category{}
+	for rows.Next() {
+		var category Category
+		if err := rows.Scan(
+			&category.ID, &category.Name, &category.Description, &category.SortOrder,
+			&category.IsActive, &category.ProductCount,
+		); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		categories = append(categories, category)
+	}
+	writeJSON(w, http.StatusOK, categories)
+}
+
+type categoryInput struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	SortOrder   int    `json:"sort_order"`
+	IsActive    *bool  `json:"is_active"`
+}
+
+func readCategoryInput(r *http.Request) (categoryInput, error) {
+	var input categoryInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		return input, fmt.Errorf("Invalid request body.")
+	}
+	input.Name = strings.TrimSpace(input.Name)
+	input.Description = strings.TrimSpace(input.Description)
+	if input.Name == "" {
+		return input, fmt.Errorf("Category name is required.")
+	}
+	return input, nil
+}
+
+func (a *App) CategoryCreate(w http.ResponseWriter, r *http.Request) {
+	input, err := readCategoryInput(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	active := true
+	if input.IsActive != nil {
+		active = *input.IsActive
+	}
+	result, err := a.DB.Exec(
+		`INSERT INTO api_category (name, description, sort_order, is_active) VALUES (?, ?, ?, ?)`,
+		input.Name, input.Description, input.SortOrder, active,
+	)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "A category with this name already exists."})
+		return
+	}
+	id, _ := result.LastInsertId()
+	writeJSON(w, http.StatusCreated, Category{
+		ID: id, Name: input.Name, Description: input.Description,
+		SortOrder: input.SortOrder, IsActive: active,
+	})
+}
+
+func (a *App) CategoryUpdate(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		notFound(w)
+		return
+	}
+	var current Category
+	if err := a.DB.QueryRow(
+		`SELECT id, name, description, sort_order, is_active FROM api_category WHERE id = ?`, id,
+	).Scan(&current.ID, &current.Name, &current.Description, &current.SortOrder, &current.IsActive); err != nil {
+		notFound(w)
+		return
+	}
+	input, err := readCategoryInput(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	active := current.IsActive
+	if input.IsActive != nil {
+		active = *input.IsActive
+	}
+	if _, err := a.DB.Exec(
+		`UPDATE api_category SET name = ?, description = ?, sort_order = ?, is_active = ? WHERE id = ?`,
+		input.Name, input.Description, input.SortOrder, active, id,
+	); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "A category with this name already exists."})
+		return
+	}
+	writeJSON(w, http.StatusOK, Category{
+		ID: id, Name: input.Name, Description: input.Description,
+		SortOrder: input.SortOrder, IsActive: active,
+	})
+}
+
+func (a *App) CategoryDelete(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		notFound(w)
+		return
+	}
+	var productCount int
+	if err := a.DB.QueryRow(`SELECT COUNT(*) FROM api_coffee WHERE category_id = ?`, id).Scan(&productCount); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if productCount > 0 {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "Move or delete this category's products first."})
+		return
+	}
+	result, err := a.DB.Exec(`DELETE FROM api_category WHERE id = ?`, id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
 		notFound(w)
 		return
 	}

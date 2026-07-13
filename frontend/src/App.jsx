@@ -26,13 +26,14 @@ function App() {
   }, []);
 
   const isHomePage = location.pathname === "/";
+  const isAdminPage = location.pathname === "/admin";
 
   return (
     <>
       <ToastContainer />
       <ScrollToTop />
-      <FloatingBasket />
-      {isHomePage ? <Navbar /> : <BasketNavbar />}
+      {!isAdminPage && <FloatingBasket />}
+      {!isAdminPage && (isHomePage ? <Navbar /> : <BasketNavbar />)}
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/basket" element={<Basket />} />
@@ -40,7 +41,7 @@ function App() {
         <Route path="/admin" element={<AdminPage />} />
         <Route path="/products" element={<ProductsPage />} />
       </Routes>
-      <Footer />
+      {!isAdminPage && <Footer />}
     </>
   );
 }

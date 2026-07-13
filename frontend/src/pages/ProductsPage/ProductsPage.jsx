@@ -1,114 +1,177 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useDispatch } from "react-redux";
 import { addToCart } from "../../features/cartSlice";
-import { API_data } from "../../data/data.jsx";
+import { API_categories, API_data } from "../../data/data.jsx";
+import {
+  formatGrams,
+  formatPrice,
+  getCategoryName,
+  getPriceOptions,
+  withSelectedPrice,
+} from "../../utils/catalog";
 import styles from "./ProductsPage.module.css";
 
 const ProductsPage = () => {
-    const [data, setData] = useState([]);
-    const [cartButtons, setCartButtons] = useState([]);
-    const dispatch = useDispatch();
-    const [error, setError] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [activeCategory, setActiveCategory] = useState("all");
+  const [selectedGrams, setSelectedGrams] = useState({});
+  const [addedProducts, setAddedProducts] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const dispatch = useDispatch();
 
-    useEffect(() => {
-        window.scrollTo(0, 0);
-        const getData = async () => {
-            try {
-                const fetchedData = await API_data();
-                setData(fetchedData);
-                setCartButtons(Array(fetchedData.length).fill(false));
-            } catch (error) {
-                setError(error);
-            }
-        };
-        getData();
-    }, []);
-
-    const handleAddToCart = (product, index) => {
-        dispatch(addToCart(product));
-        setCartButtons((prev) => {
-            const newState = [...prev];
-            newState[index] = true;
-            return newState;
-        });
-    };
-
-    const renderStars = (rating) => {
-        const totalStars = 5;
-        const filledStars = Math.floor(rating);
-        const starFilled = "★";
-        const starEmpty = "☆";
-
-        return (
-            <div className={styles.stars}>
-                {[...Array(totalStars)].map((_, index) => (
-                    <span
-                        key={index}
-                        role="img"
-                        aria-label={index < filledStars ? "filled-star" : "empty-star"}
-                    >
-                        {index < filledStars ? starFilled : starEmpty}
-                    </span>
-                ))}
-            </div>
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    Promise.all([API_data(), API_categories()])
+      .then(([productData, categoryData]) => {
+        setProducts(productData);
+        setCategories(categoryData.filter((category) => category.is_active));
+        setSelectedGrams(
+          Object.fromEntries(
+            productData.map((product) => [product.id, getPriceOptions(product)[0]?.grams]),
+          ),
         );
-    };
+      })
+      .catch(() => setError("Kataloq hazırda yüklənmir. Bir az sonra yenidən yoxlayın."))
+      .finally(() => setLoading(false));
+  }, []);
 
-    return (
-        <div className={styles.page_wrapper}>
-            <div className={styles.hero_section}>
-                <div className="container">
-                    <div className={styles.hero_content}>
-                        <h1>Bütün Məhsullarımız</h1>
-                        <p>Təzə qovrulmuş, premium keyfiyyətli qəhvə dənələri</p>
-                    </div>
-                </div>
-            </div>
+  const visibleProducts = useMemo(
+    () =>
+      activeCategory === "all"
+        ? products
+        : products.filter(
+            (product) => String(product.category_id) === String(activeCategory),
+          ),
+    [activeCategory, products],
+  );
 
-            <div className="container">
-                <div className={styles.products_grid}>
-                    {data.map((product, index) => (
-                        <div key={product.id} className={styles.product_card}>
-                            <div className={styles.image_container}>
-                                <img src={product.img} alt={product.name} />
-                                <div className={styles.overlay}>
-                                    {cartButtons[index] ? (
-                                        <Link to="/basket" className={styles.cart_btn}>
-                                            Səbətə bax
-                                        </Link>
-                                    ) : (
-                                        <button
-                                            className={styles.cart_btn}
-                                            onClick={() => handleAddToCart(product, index)}
-                                        >
-                                            Səbətə əlavə et
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                            <div className={styles.info}>
-                                {renderStars(product.star)}
-                                <h3>{product.name}</h3>
-                                {cartButtons[index] ? (
-                                    <Link to="/basket" className={styles.mobile_btn}>
-                                        Səbətə bax
-                                    </Link>
-                                ) : (
-                                    <button
-                                        className={styles.mobile_btn}
-                                        onClick={() => handleAddToCart(product, index)}
-                                    >
-                                        Səbətə əlavə et
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
+  const handleAddToCart = (product) => {
+    dispatch(addToCart(withSelectedPrice(product, selectedGrams[product.id])));
+    setAddedProducts((current) => ({ ...current, [product.id]: true }));
+  };
+
+  return (
+    <main className={styles.pageWrapper}>
+      <section className={styles.heroSection}>
+        <div className={styles.heroContent}>
+          <span className={styles.eyebrow}>Coffee Raffa · Kataloq</span>
+          <h1>Hər dəmləmə üsuluna öz qəhvəsi</h1>
+          <p>
+            Kateqoriyanı seçin, sizə uyğun qramı müəyyən edin və təzə qovrulmuş
+            məhsulu səbətə əlavə edin.
+          </p>
         </div>
-    );
+      </section>
+
+      <section className={styles.catalogSection}>
+        <div className={styles.filterBar} aria-label="Məhsul kateqoriyaları">
+          <button
+            type="button"
+            className={activeCategory === "all" ? styles.activeFilter : ""}
+            onClick={() => setActiveCategory("all")}
+          >
+            Hamısı <span>{products.length}</span>
+          </button>
+          {categories.map((category) => (
+            <button
+              type="button"
+              key={category.id}
+              className={
+                String(activeCategory) === String(category.id)
+                  ? styles.activeFilter
+                  : ""
+              }
+              onClick={() => setActiveCategory(category.id)}
+            >
+              {category.name} <span>{category.product_count}</span>
+            </button>
+          ))}
+        </div>
+
+        {loading && <div className={styles.statusPanel}>Kataloq hazırlanır…</div>}
+        {error && <div className={styles.errorPanel}>{error}</div>}
+        {!loading && !error && visibleProducts.length === 0 && (
+          <div className={styles.statusPanel}>
+            <strong>Bu bölmədə hələ məhsul yoxdur.</strong>
+            <span>Yeni qovurmalar tezliklə burada görünəcək.</span>
+          </div>
+        )}
+
+        <div className={styles.productsGrid}>
+          {visibleProducts.map((product) => {
+            const priceOptions = getPriceOptions(product);
+            const currentGrams = selectedGrams[product.id] || priceOptions[0]?.grams;
+            const currentPrice =
+              priceOptions.find((option) => option.grams === Number(currentGrams))
+                ?.price ?? 0;
+            return (
+              <article key={product.id} className={styles.productCard}>
+                <div className={styles.imageContainer}>
+                  {product.img ? (
+                    <img src={product.img} alt={product.name} />
+                  ) : (
+                    <div className={styles.imageFallback}>CR</div>
+                  )}
+                  <span className={styles.categoryBadge}>{getCategoryName(product)}</span>
+                </div>
+                <div className={styles.cardBody}>
+                  <div className={styles.rating} aria-label={`${product.star} ulduz`}>
+                    {"★".repeat(product.star)}
+                    <span>{"☆".repeat(5 - product.star)}</span>
+                  </div>
+                  <h2>{product.name}</h2>
+                  <p>{product.description}</p>
+
+                  <div className={styles.purchaseRow}>
+                    <label>
+                      <span>Çəki</span>
+                      <select
+                        value={currentGrams || ""}
+                        onChange={(event) =>
+                          setSelectedGrams((current) => ({
+                            ...current,
+                            [product.id]: Number(event.target.value),
+                          }))
+                        }
+                      >
+                        {priceOptions.map((option) => (
+                          <option key={option.grams} value={option.grams}>
+                            {formatGrams(option.grams)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className={styles.price}>
+                      <strong>{formatPrice(currentPrice)} ₼</strong>
+                      <span>{formatGrams(currentGrams)}</span>
+                    </div>
+                  </div>
+
+                  {addedProducts[product.id] ? (
+                    <Link to="/basket" className={styles.cartButtonSecondary}>
+                      Səbətə bax
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      className={styles.cartButton}
+                      onClick={() => handleAddToCart(product)}
+                      disabled={!priceOptions.length}
+                    >
+                      Səbətə əlavə et
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+    </main>
+  );
 };
 
 export default ProductsPage;

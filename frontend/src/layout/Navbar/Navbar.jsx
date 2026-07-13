@@ -21,7 +21,7 @@ const Navbar = () => {
 
   useEffect(() => {
     dispatch(getTotals());
-  }, [cart]);
+  }, [cart.cartItems, dispatch]);
 
   useEffect(() => {
     const handleBodyOverflow = () => {

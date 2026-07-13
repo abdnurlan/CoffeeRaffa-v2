@@ -14,7 +14,7 @@ const BasketHeader = () => {
             <h3>Səbət</h3>
             <div className={styles.basket_header_links}>
                 <Link to={'/'}><h6>Ana səhifə</h6></Link>
-                <h6>//</h6>
+                <h6>{"//"}</h6>
                 <h6>Səbət</h6>
             </div>
         </div>

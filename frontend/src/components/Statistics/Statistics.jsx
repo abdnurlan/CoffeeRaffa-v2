@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import styles from './Statistics.module.css';
 
-const Statistics = () => {
-  const targets = [18, 35, 24];
-  const duration = 1500;
+const targets = [18, 35, 24];
+const duration = 1500;
 
+const Statistics = () => {
   const [isVisible, setIsVisible] = useState(false);
   const [counts, setCounts] = useState(Array(targets.length).fill(0));
   const ref = useRef(null);
@@ -30,21 +30,15 @@ const Statistics = () => {
   }, []);
 
   useEffect(() => {
-    if (isVisible) {
-      startCountAnimation();
-    }
-  }, [isVisible]);
-
-  const startCountAnimation = () => {
+    if (!isVisible) return undefined;
     const start = Date.now();
     const timer = setInterval(() => {
       const delta = Math.min(1, (Date.now() - start) / duration);
-      setCounts(
-        targets.map((target) => Math.round(target * delta))
-      );
+      setCounts(targets.map((target) => Math.round(target * delta)));
       if (delta === 1) clearInterval(timer);
     }, 10);
-  };
+    return () => clearInterval(timer);
+  }, [isVisible]);
 
   const statisticNames = [
     'Seçilmiş Çeşidlər',
