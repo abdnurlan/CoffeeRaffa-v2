@@ -12,7 +12,7 @@ import {
   getTotals,
   resetCart,
 } from "../../features/cartSlice";
-import { formatGrams, formatPrice } from "../../utils/catalog";
+import { formatGrams, formatPrice, isCoffee } from "../../utils/catalog";
 
 const BasketDashboard = () => {
   const cart = useSelector((state) => state.cart);
@@ -59,7 +59,7 @@ const BasketDashboard = () => {
     const items = cart.cartItems
       .map(
         (item) =>
-          `${item.name}: ${item.cartQuantity} × ${formatGrams(item.selectedGrams)} - ${formatPrice(item.price * item.cartQuantity)} ₼`
+          `${item.name}: ${item.cartQuantity} × ${isCoffee(item) ? formatGrams(item.selectedGrams) : "1 ədəd"} - ${formatPrice(item.price * item.cartQuantity)} ₼`
       )
       .join("\n\n");
 
@@ -134,27 +134,21 @@ const BasketDashboard = () => {
                         </div>
                       </td>
                       <td className={styles.product_quantity}>
-                        <div className={styles.grammage_container}>
-                          <div className={styles.quantity_number}>
-                            {formatGrams(cartItem.selectedGrams)}
-                          </div>
-                          <div className={styles.quantity_buttons}>
-                            <div
-                              onClick={() =>
-                                handleGrammageChange(cartItem, "up")
-                              }
-                            >
-                              <FaAngleUp />
+                        {isCoffee(cartItem) ? (
+                          <div className={styles.grammage_container}>
+                            <div className={styles.quantity_number}>
+                              {formatGrams(cartItem.selectedGrams)}
                             </div>
-                            <div
-                              onClick={() =>
-                                handleGrammageChange(cartItem, "down")
-                              }
-                            >
-                              <FaAngleDown />
+                            <div className={styles.quantity_buttons}>
+                              <div onClick={() => handleGrammageChange(cartItem, "up")}>
+                                <FaAngleUp />
+                              </div>
+                              <div onClick={() => handleGrammageChange(cartItem, "down")}>
+                                <FaAngleDown />
+                              </div>
                             </div>
                           </div>
-                        </div>
+                        ) : "1 ədəd"}
                       </td>
                       <td className={styles.product_price}>
                         {formatPrice(cartItem.price)} ₼
@@ -199,25 +193,21 @@ const BasketDashboard = () => {
                     </div>
                     <div className={styles.product_info_text}>
                       <p>Ölçü :</p>
-                      <div className={styles.grammage_container}>
-                        <div className={styles.quantity_number}>
-                          {formatGrams(cartItem.selectedGrams)}
-                        </div>
-                        <div className={styles.quantity_buttons}>
-                          <div
-                            onClick={() => handleGrammageChange(cartItem, "up")}
-                          >
-                            <FaAngleUp />
+                      {isCoffee(cartItem) ? (
+                        <div className={styles.grammage_container}>
+                          <div className={styles.quantity_number}>
+                            {formatGrams(cartItem.selectedGrams)}
                           </div>
-                          <div
-                            onClick={() =>
-                              handleGrammageChange(cartItem, "down")
-                            }
-                          >
-                            <FaAngleDown />
+                          <div className={styles.quantity_buttons}>
+                            <div onClick={() => handleGrammageChange(cartItem, "up")}>
+                              <FaAngleUp />
+                            </div>
+                            <div onClick={() => handleGrammageChange(cartItem, "down")}>
+                              <FaAngleDown />
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      ) : <p>1 ədəd</p>}
                     </div>
                     <div className={styles.product_info_text}>
                       <p>Qiymət :</p>

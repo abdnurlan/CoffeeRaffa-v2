@@ -197,6 +197,7 @@
 }
 
 .purchaseRow label > span,
+.unitLabel > span,
 .price span {
   display: block;
   margin-bottom: 0.3rem;
@@ -205,6 +206,12 @@
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+.unitLabel strong {
+  display: block;
+  padding: 0.68rem 0;
+  color: #315a39;
 }
 
 .purchaseRow select {

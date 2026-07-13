@@ -40,7 +40,9 @@ var schema = []string{
 		"prices" text NOT NULL CHECK ((JSON_VALID("prices") OR "prices" IS NULL)),
 		"quality" text NOT NULL CHECK ((JSON_VALID("quality") OR "quality" IS NULL)),
 		"star" integer NOT NULL,
-		"category_id" integer NULL REFERENCES "api_category" ("id") DEFERRABLE INITIALLY DEFERRED)`,
+		"category_id" integer NULL REFERENCES "api_category" ("id") DEFERRABLE INITIALLY DEFERRED,
+		"product_type" varchar(20) NOT NULL DEFAULT 'coffee',
+		"unit_price" real NULL)`,
 	`CREATE TABLE IF NOT EXISTS "api_userprofile" (
 		"id" integer NOT NULL PRIMARY KEY AUTOINCREMENT,
 		"user_id" integer NOT NULL UNIQUE REFERENCES "auth_user" ("id") DEFERRABLE INITIALLY DEFERRED,
@@ -87,6 +89,24 @@ func migrateCatalog(db *sql.DB) error {
 	}
 	if !hasCategory {
 		if _, err := db.Exec(`ALTER TABLE api_coffee ADD COLUMN category_id integer NULL REFERENCES api_category(id)`); err != nil {
+			return err
+		}
+	}
+	hasProductType, err := hasColumn(db, "api_coffee", "product_type")
+	if err != nil {
+		return err
+	}
+	if !hasProductType {
+		if _, err := db.Exec(`ALTER TABLE api_coffee ADD COLUMN product_type varchar(20) NOT NULL DEFAULT 'coffee'`); err != nil {
+			return err
+		}
+	}
+	hasUnitPrice, err := hasColumn(db, "api_coffee", "unit_price")
+	if err != nil {
+		return err
+	}
+	if !hasUnitPrice {
+		if _, err := db.Exec(`ALTER TABLE api_coffee ADD COLUMN unit_price real NULL`); err != nil {
 			return err
 		}
 	}

@@ -8,6 +8,8 @@ import {
   formatPrice,
   getCategoryName,
   getPriceOptions,
+  getUnitPrice,
+  isCoffee,
   withSelectedPrice,
 } from "../../utils/catalog";
 import styles from "./ProductsPage.module.css";
@@ -30,7 +32,9 @@ const ProductsPage = () => {
         setCategories(categoryData.filter((category) => category.is_active));
         setSelectedGrams(
           Object.fromEntries(
-            productData.map((product) => [product.id, getPriceOptions(product)[0]?.grams]),
+            productData
+              .filter(isCoffee)
+              .map((product) => [product.id, getPriceOptions(product)[0]?.grams]),
           ),
         );
       })
@@ -58,10 +62,10 @@ const ProductsPage = () => {
       <section className={styles.heroSection}>
         <div className={styles.heroContent}>
           <span className={styles.eyebrow}>Coffee Raffa · Kataloq</span>
-          <h1>Hər dəmləmə üsuluna öz qəhvəsi</h1>
+          <h1>Qəhvə və dəmləmə dünyası</h1>
           <p>
-            Kateqoriyanı seçin, sizə uyğun qramı müəyyən edin və təzə qovrulmuş
-            məhsulu səbətə əlavə edin.
+            Təzə qovrulmuş qəhvənizi qramla, dəmləmə avadanlıqlarını isə ədədlə
+            seçib səbətə əlavə edin.
           </p>
         </div>
       </section>
@@ -102,11 +106,13 @@ const ProductsPage = () => {
 
         <div className={styles.productsGrid}>
           {visibleProducts.map((product) => {
+            const coffee = isCoffee(product);
             const priceOptions = getPriceOptions(product);
             const currentGrams = selectedGrams[product.id] || priceOptions[0]?.grams;
-            const currentPrice =
-              priceOptions.find((option) => option.grams === Number(currentGrams))
-                ?.price ?? 0;
+            const currentPrice = coffee
+              ? priceOptions.find((option) => option.grams === Number(currentGrams))
+                  ?.price ?? 0
+              : getUnitPrice(product) ?? 0;
             return (
               <article key={product.id} className={styles.productCard}>
                 <div className={styles.imageContainer}>
@@ -126,27 +132,34 @@ const ProductsPage = () => {
                   <p>{product.description}</p>
 
                   <div className={styles.purchaseRow}>
-                    <label>
-                      <span>Çəki</span>
-                      <select
-                        value={currentGrams || ""}
-                        onChange={(event) =>
-                          setSelectedGrams((current) => ({
-                            ...current,
-                            [product.id]: Number(event.target.value),
-                          }))
-                        }
-                      >
-                        {priceOptions.map((option) => (
-                          <option key={option.grams} value={option.grams}>
-                            {formatGrams(option.grams)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    {coffee ? (
+                      <label>
+                        <span>Çəki</span>
+                        <select
+                          value={currentGrams || ""}
+                          onChange={(event) =>
+                            setSelectedGrams((current) => ({
+                              ...current,
+                              [product.id]: Number(event.target.value),
+                            }))
+                          }
+                        >
+                          {priceOptions.map((option) => (
+                            <option key={option.grams} value={option.grams}>
+                              {formatGrams(option.grams)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : (
+                      <div className={styles.unitLabel}>
+                        <span>Satış forması</span>
+                        <strong>Ədəd</strong>
+                      </div>
+                    )}
                     <div className={styles.price}>
                       <strong>{formatPrice(currentPrice)} ₼</strong>
-                      <span>{formatGrams(currentGrams)}</span>
+                      <span>{coffee ? formatGrams(currentGrams) : "1 ədəd"}</span>
                     </div>
                   </div>
 
@@ -159,7 +172,7 @@ const ProductsPage = () => {
                       type="button"
                       className={styles.cartButton}
                       onClick={() => handleAddToCart(product)}
-                      disabled={!priceOptions.length}
+                      disabled={coffee ? !priceOptions.length : getUnitPrice(product) === undefined}
                     >
                       Səbətə əlavə et
                     </button>

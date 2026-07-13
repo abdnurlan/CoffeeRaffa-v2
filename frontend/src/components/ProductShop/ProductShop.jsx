@@ -8,6 +8,8 @@ import {
   formatPrice,
   getCategoryName,
   getPriceOptions,
+  getUnitPrice,
+  isCoffee,
   withSelectedPrice,
 } from "../../utils/catalog";
 import styles from "./ProductShop.module.css";
@@ -24,7 +26,9 @@ const ProductShop = () => {
         setProducts(data);
         setSelectedGrams(
           Object.fromEntries(
-            data.map((product) => [product.id, getPriceOptions(product)[0]?.grams]),
+            data
+              .filter(isCoffee)
+              .map((product) => [product.id, getPriceOptions(product)[0]?.grams]),
           ),
         );
       })
@@ -42,14 +46,17 @@ const ProductShop = () => {
         <div className={styles.header}>
           <div className={styles.header_h6}><h6>Onlayn Mağaza</h6></div>
           <div className={styles.header_h3}><h3 className="display-font">Məhsullarımız</h3></div>
-          <p className={styles.header_copy}>Dəmləmə üsulunuzu seçin, qramı isə zövqünüzə uyğunlaşdırın.</p>
+          <p className={styles.header_copy}>Qəhvəni istədiyiniz qramda, digər məhsulları isə ədədlə seçin.</p>
         </div>
 
         <div className={styles.products_list}>
           {products.slice(0, 8).map((product) => {
+            const coffee = isCoffee(product);
             const options = getPriceOptions(product);
             const grams = selectedGrams[product.id] || options[0]?.grams;
-            const price = options.find((option) => option.grams === Number(grams))?.price;
+            const price = coffee
+              ? options.find((option) => option.grams === Number(grams))?.price
+              : getUnitPrice(product);
             return (
               <article key={product.id} className={styles.product}>
                 <div className={styles.product_img_container}>
@@ -66,22 +73,26 @@ const ProductShop = () => {
                   </div>
                   <h3>{product.name}</h3>
                   <div className={styles.variant_row}>
-                    <select
-                      aria-label={`${product.name} çəkisi`}
-                      value={grams || ""}
-                      onChange={(event) =>
-                        setSelectedGrams((current) => ({
-                          ...current,
-                          [product.id]: Number(event.target.value),
-                        }))
-                      }
-                    >
-                      {options.map((option) => (
-                        <option value={option.grams} key={option.grams}>
-                          {formatGrams(option.grams)}
-                        </option>
-                      ))}
-                    </select>
+                    {coffee ? (
+                      <select
+                        aria-label={`${product.name} çəkisi`}
+                        value={grams || ""}
+                        onChange={(event) =>
+                          setSelectedGrams((current) => ({
+                            ...current,
+                            [product.id]: Number(event.target.value),
+                          }))
+                        }
+                      >
+                        {options.map((option) => (
+                          <option value={option.grams} key={option.grams}>
+                            {formatGrams(option.grams)}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className={styles.unit_label}>1 ədəd</span>
+                    )}
                     <strong>{formatPrice(price || 0)} ₼</strong>
                   </div>
                   {addedProducts[product.id] ? (
@@ -91,7 +102,7 @@ const ProductShop = () => {
                       type="button"
                       className={styles.hover_btn_mobile}
                       onClick={() => handleAddToCart(product)}
-                      disabled={!options.length}
+                      disabled={coffee ? !options.length : price === undefined}
                     >
                       Səbətə əlavə et
                     </button>

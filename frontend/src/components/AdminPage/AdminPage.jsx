@@ -5,18 +5,22 @@ import {
   formatPrice,
   getCategoryName,
   getPriceOptions,
+  getUnitPrice,
+  isCoffee,
 } from "../../utils/catalog";
 import styles from "./AdminPage.module.css";
 
 const API = "https://api.coffeeraffa.az/api";
 
-const emptyProduct = () => ({
+const emptyProduct = (productType = "coffee") => ({
+  productType,
   name: "",
   description: "",
   categoryId: "",
   quality: "Medium",
   star: 5,
   priceOptions: [{ grams: 250, price: "" }],
+  unitPrice: "",
   image: null,
 });
 
@@ -100,10 +104,10 @@ const AdminPage = () => {
     setToken("");
   };
 
-  const openNewProduct = () => {
+  const openNewProduct = (productType) => {
     setEditingProduct(null);
     setProductForm({
-      ...emptyProduct(),
+      ...emptyProduct(productType),
       categoryId: categories.find((category) => category.is_active)?.id || "",
     });
     setShowProductForm(true);
@@ -112,12 +116,14 @@ const AdminPage = () => {
   const openEditProduct = (product) => {
     setEditingProduct(product);
     setProductForm({
+      productType: isCoffee(product) ? "coffee" : "product",
       name: product.name,
       description: product.description,
       categoryId: product.category_id || "",
       quality: product.quality?.[0] || "Medium",
       star: product.star,
       priceOptions: getPriceOptions(product),
+      unitPrice: getUnitPrice(product) ?? "",
       image: null,
     });
     setShowProductForm(true);
@@ -148,11 +154,18 @@ const AdminPage = () => {
 
   const submitProduct = async (event) => {
     event.preventDefault();
-    const priceOptions = productForm.priceOptions.map((option) => ({
-      grams: Number(option.grams),
-      price: Number(option.price),
-    }));
-    if (!priceOptions.length || new Set(priceOptions.map((option) => option.grams)).size !== priceOptions.length) {
+    const coffee = productForm.productType === "coffee";
+    const priceOptions = coffee
+      ? productForm.priceOptions.map((option) => ({
+          grams: Number(option.grams),
+          price: Number(option.price),
+        }))
+      : [];
+    if (
+      coffee &&
+      (!priceOptions.length ||
+        new Set(priceOptions.map((option) => option.grams)).size !== priceOptions.length)
+    ) {
       notify("Hər qram seçimi unikal olmalıdır.", "error");
       return;
     }
@@ -161,9 +174,14 @@ const AdminPage = () => {
     payload.append("name", productForm.name);
     payload.append("description", productForm.description);
     payload.append("category_id", productForm.categoryId);
-    payload.append("quality", JSON.stringify([productForm.quality]));
+    payload.append("product_type", productForm.productType);
     payload.append("star", productForm.star);
-    payload.append("price_options", JSON.stringify(priceOptions));
+    if (coffee) {
+      payload.append("quality", JSON.stringify([productForm.quality]));
+      payload.append("price_options", JSON.stringify(priceOptions));
+    } else {
+      payload.append("unit_price", productForm.unitPrice);
+    }
     if (productForm.image) payload.append("img", productForm.image);
 
     try {
@@ -172,7 +190,7 @@ const AdminPage = () => {
         notify("Məhsul yeniləndi.");
       } else {
         await axios.post(`${API}/coffee/create/`, payload, { headers: auth });
-        notify("Yeni məhsul kataloqa əlavə edildi.");
+        notify(coffee ? "Yeni qəhvə kataloqa əlavə edildi." : "Yeni məhsul kataloqa əlavə edildi.");
       }
       setShowProductForm(false);
       setProductForm(emptyProduct());
@@ -287,9 +305,20 @@ const AdminPage = () => {
             <span className={styles.kicker}>Dinamik kataloq</span>
             <h2>{section === "products" ? "Məhsullar" : "Kateqoriyalar"}</h2>
           </div>
-          <button type="button" className={styles.primaryButton} onClick={section === "products" ? openNewProduct : openNewCategory}>
-            + {section === "products" ? "Yeni məhsul" : "Yeni kateqoriya"}
-          </button>
+          {section === "products" ? (
+            <div className={styles.headerActions}>
+              <button type="button" className={styles.secondaryButton} onClick={() => openNewProduct("product")}>
+                + Məhsul əlavə et
+              </button>
+              <button type="button" className={styles.primaryButton} onClick={() => openNewProduct("coffee")}>
+                + Qəhvə əlavə et
+              </button>
+            </div>
+          ) : (
+            <button type="button" className={styles.primaryButton} onClick={openNewCategory}>
+              + Yeni kateqoriya
+            </button>
+          )}
         </header>
 
         {loading ? (
@@ -304,12 +333,19 @@ const AdminPage = () => {
                   <i>{getCategoryName(product)}</i>
                 </div>
                 <div className={styles.productContent}>
-                  <div><h3>{product.name}</h3><span>{product.quality?.join(", ")}</span></div>
+                  <div>
+                    <h3>{product.name}</h3>
+                    <span>{isCoffee(product) ? product.quality?.join(", ") : "Məhsul"}</span>
+                  </div>
                   <p>{product.description}</p>
                   <div className={styles.priceChips}>
-                    {getPriceOptions(product).map((option) => (
-                      <span key={option.grams}>{formatGrams(option.grams)} · {formatPrice(option.price)} ₼</span>
-                    ))}
+                    {isCoffee(product) ? (
+                      getPriceOptions(product).map((option) => (
+                        <span key={option.grams}>{formatGrams(option.grams)} · {formatPrice(option.price)} ₼</span>
+                      ))
+                    ) : (
+                      <span>Ədəd · {formatPrice(getUnitPrice(product) ?? 0)} ₼</span>
+                    )}
                   </div>
                   <div className={styles.cardActions}>
                     <button type="button" onClick={() => openEditProduct(product)}>Düzəliş</button>
@@ -341,25 +377,44 @@ const AdminPage = () => {
       {showProductForm && (
         <div className={styles.modalBackdrop} role="presentation" onMouseDown={() => setShowProductForm(false)}>
           <section className={styles.modal} onMouseDown={(event) => event.stopPropagation()}>
-            <header><div><span className={styles.kicker}>Məhsul kartı</span><h2>{editingProduct ? "Məhsulu yenilə" : "Yeni məhsul"}</h2></div><button type="button" onClick={() => setShowProductForm(false)}>×</button></header>
+            <header>
+              <div>
+                <span className={styles.kicker}>{productForm.productType === "coffee" ? "Qəhvə kartı" : "Məhsul kartı"}</span>
+                <h2>
+                  {editingProduct
+                    ? productForm.productType === "coffee" ? "Qəhvəni yenilə" : "Məhsulu yenilə"
+                    : productForm.productType === "coffee" ? "Yeni qəhvə" : "Yeni məhsul"}
+                </h2>
+              </div>
+              <button type="button" onClick={() => setShowProductForm(false)}>×</button>
+            </header>
             <form onSubmit={submitProduct}>
               <div className={styles.formGrid}>
-                <label>Məhsul adı<input value={productForm.name} onChange={(event) => setProductForm({ ...productForm, name: event.target.value })} required /></label>
+                <label>{productForm.productType === "coffee" ? "Qəhvə adı" : "Məhsul adı"}<input value={productForm.name} onChange={(event) => setProductForm({ ...productForm, name: event.target.value })} required /></label>
                 <label>Kateqoriya<select value={productForm.categoryId} onChange={(event) => setProductForm({ ...productForm, categoryId: event.target.value })} required><option value="">Kateqoriya seçin</option>{categories.map((category) => <option key={category.id} value={category.id} disabled={!category.is_active}>{category.name}{!category.is_active ? " (gizli)" : ""}</option>)}</select></label>
-                <label>Qovurma<select value={productForm.quality} onChange={(event) => setProductForm({ ...productForm, quality: event.target.value })}><option value="Light">Light</option><option value="Medium">Medium</option><option value="Dark">Dark</option></select></label>
+                {productForm.productType === "coffee" && (
+                  <label>Qovurma<select value={productForm.quality} onChange={(event) => setProductForm({ ...productForm, quality: event.target.value })}><option value="Light">Light</option><option value="Medium">Medium</option><option value="Dark">Dark</option></select></label>
+                )}
                 <label>Ulduz<input type="number" min="1" max="5" value={productForm.star} onChange={(event) => setProductForm({ ...productForm, star: Number(event.target.value) })} required /></label>
               </div>
               <label>Açıqlama<textarea value={productForm.description} onChange={(event) => setProductForm({ ...productForm, description: event.target.value })} required /></label>
-              <div className={styles.priceEditor}>
-                <div><div><span className={styles.kicker}>Qiymət pillələri</span><h3>Qram üzrə qiymətlər</h3></div><button type="button" onClick={addPriceOption}>+ Qiymət əlavə et</button></div>
-                {productForm.priceOptions.map((option, index) => (
-                  <div className={styles.priceRow} key={`${index}-${option.grams}`}>
-                    <label>Qram<input type="number" min="1" step="1" value={option.grams} onChange={(event) => updatePriceOption(index, "grams", event.target.value)} required /></label>
-                    <label>Qiymət (₼)<input type="number" min="0" step="0.01" value={option.price} onChange={(event) => updatePriceOption(index, "price", event.target.value)} required /></label>
-                    <button type="button" onClick={() => removePriceOption(index)} disabled={productForm.priceOptions.length === 1}>Sil</button>
-                  </div>
-                ))}
-              </div>
+              {productForm.productType === "coffee" ? (
+                <div className={styles.priceEditor}>
+                  <div><div><span className={styles.kicker}>Qiymət pillələri</span><h3>Qram üzrə qiymətlər</h3></div><button type="button" onClick={addPriceOption}>+ Qiymət əlavə et</button></div>
+                  {productForm.priceOptions.map((option, index) => (
+                    <div className={styles.priceRow} key={`${index}-${option.grams}`}>
+                      <label>Qram<input type="number" min="1" step="1" value={option.grams} onChange={(event) => updatePriceOption(index, "grams", event.target.value)} required /></label>
+                      <label>Qiymət (₼)<input type="number" min="0" step="0.01" value={option.price} onChange={(event) => updatePriceOption(index, "price", event.target.value)} required /></label>
+                      <button type="button" onClick={() => removePriceOption(index)} disabled={productForm.priceOptions.length === 1}>Sil</button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className={styles.priceEditor}>
+                  <div><div><span className={styles.kicker}>Satış qiyməti</span><h3>Ədəd üzrə qiymət</h3></div></div>
+                  <label>Qiymət (₼)<input type="number" min="0" step="0.01" value={productForm.unitPrice} onChange={(event) => setProductForm({ ...productForm, unitPrice: event.target.value })} required /></label>
+                </div>
+              )}
               <label>Məhsul şəkli<input type="file" accept="image/*" onChange={(event) => setProductForm({ ...productForm, image: event.target.files?.[0] || null })} /><small>{editingProduct ? "Boş saxlasanız mövcud şəkil qalacaq." : "Şəkli sonra da əlavə edə bilərsiniz."}</small></label>
               <footer><button type="button" onClick={() => setShowProductForm(false)}>İmtina</button><button type="submit" className={styles.primaryButton}>Yadda saxla</button></footer>
             </form>

@@ -7,6 +7,8 @@ const parseLegacyGrams = (label) => {
 };
 
 export const getPriceOptions = (product) => {
+  if (!isCoffee(product)) return [];
+
   const options = Array.isArray(product?.price_options)
     ? product.price_options
     : Object.entries(product?.prices || {}).map(([label, price]) => ({
@@ -40,7 +42,24 @@ export const formatPrice = (price) =>
 export const getCategoryName = (product) =>
   product?.category?.name || "Kateqoriyasız";
 
+export const isCoffee = (product) => product?.product_type !== "product";
+
+export const getUnitPrice = (product) => {
+  const candidate = product?.unit_price ?? product?.prices?.unit ?? product?.price;
+  const price = Number(candidate);
+  return Number.isFinite(price) && price >= 0 ? price : undefined;
+};
+
 export const withSelectedPrice = (product, selectedGrams) => {
+  if (!isCoffee(product)) {
+    return {
+      ...product,
+      priceOptions: [],
+      selectedGrams: null,
+      grammage: null,
+      price: getUnitPrice(product),
+    };
+  }
   const priceOptions = getPriceOptions(product);
   const selected =
     priceOptions.find((option) => option.grams === Number(selectedGrams)) ||

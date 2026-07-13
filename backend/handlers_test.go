@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"mime/multipart"
 	"net/http"
@@ -10,6 +11,29 @@ import (
 	"strconv"
 	"testing"
 )
+
+func TestCatalogMigrationAddsProductPricingColumns(t *testing.T) {
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "legacy.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`
+		CREATE TABLE api_category (id integer PRIMARY KEY);
+		CREATE TABLE api_coffee (id integer PRIMARY KEY, category_id integer NULL);
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateCatalog(db); err != nil {
+		t.Fatal(err)
+	}
+	for _, column := range []string{"category_id", "product_type", "unit_price"} {
+		has, err := hasColumn(db, "api_coffee", column)
+		if err != nil || !has {
+			t.Fatalf("expected migrated column %s: has=%v err=%v", column, has, err)
+		}
+	}
+}
 
 func testApp(t *testing.T) *App {
 	t.Helper()
@@ -99,10 +123,95 @@ func TestCategoryAndProductCatalogFlow(t *testing.T) {
 		t.Fatalf("expected one product, got %d", len(products))
 	}
 	product := products[0]
+	if product.ProductType != "coffee" || product.UnitPrice != nil {
+		t.Fatalf("unexpected coffee pricing type: type=%q unit_price=%v", product.ProductType, product.UnitPrice)
+	}
 	if product.Category == nil || product.Category.ID != category.ID || product.Category.Name != "Moka Pot Coffee" {
 		t.Fatalf("unexpected category: %#v", product.Category)
 	}
 	if len(product.PriceOptions) != 2 || product.PriceOptions[0].Grams != 250 || product.PriceOptions[1].Price != 25 {
 		t.Fatalf("unexpected price options: %#v", product.PriceOptions)
+	}
+}
+
+func TestPhysicalProductUsesUnitPriceWithoutGramOptions(t *testing.T) {
+	app := testApp(t)
+	result, err := app.DB.Exec(`INSERT INTO api_category (name, description, sort_order, is_active) VALUES ('Equipment', '', 1, 1)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	categoryID, _ := result.LastInsertId()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	fields := map[string]string{
+		"name":         "Moka Pot",
+		"description":  "Stovetop coffee maker",
+		"category_id":  strconv.FormatInt(categoryID, 10),
+		"product_type": "product",
+		"unit_price":   "39.90",
+		"star":         "5",
+	}
+	for key, value := range fields {
+		if err := writer.WriteField(key, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/coffee/create/", &body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	recorder := httptest.NewRecorder()
+	app.CoffeeCreate(recorder, request)
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("create physical product: status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var product Coffee
+	if err := json.Unmarshal(recorder.Body.Bytes(), &product); err != nil {
+		t.Fatal(err)
+	}
+	if product.ProductType != "product" || product.UnitPrice == nil || *product.UnitPrice != 39.90 {
+		t.Fatalf("unexpected physical product pricing: %#v", product)
+	}
+	if len(product.PriceOptions) != 0 {
+		t.Fatalf("physical products must not expose gram prices: %#v", product.PriceOptions)
+	}
+	if string(product.Prices) != `{"unit":39.9}` {
+		t.Fatalf("legacy prices field not preserved: %s", product.Prices)
+	}
+
+	body.Reset()
+	writer = multipart.NewWriter(&body)
+	for key, value := range map[string]string{
+		"product_type": "product",
+		"unit_price":   "44.50",
+		"name":         product.Name,
+		"description":  product.Description,
+		"category_id":  strconv.FormatInt(categoryID, 10),
+		"star":         "5",
+	} {
+		if err := writer.WriteField(key, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	updateRequest := httptest.NewRequest(http.MethodPatch, "/api/product/update/", &body)
+	updateRequest.SetPathValue("id", strconv.FormatInt(product.ID, 10))
+	updateRequest.Header.Set("Content-Type", writer.FormDataContentType())
+	updateRecorder := httptest.NewRecorder()
+	app.CoffeeUpdate(updateRecorder, updateRequest)
+	if updateRecorder.Code != http.StatusOK {
+		t.Fatalf("update physical product: status=%d body=%s", updateRecorder.Code, updateRecorder.Body.String())
+	}
+	if err := json.Unmarshal(updateRecorder.Body.Bytes(), &product); err != nil {
+		t.Fatal(err)
+	}
+	if product.UnitPrice == nil || *product.UnitPrice != 44.50 || len(product.PriceOptions) != 0 {
+		t.Fatalf("unexpected updated physical product: %#v", product)
 	}
 }

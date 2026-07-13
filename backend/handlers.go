@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -43,6 +44,8 @@ type Coffee struct {
 	CategoryID   *int64          `json:"category_id"`
 	Category     *Category       `json:"category"`
 	PriceOptions []PriceOption   `json:"price_options"`
+	ProductType  string          `json:"product_type"`
+	UnitPrice    *float64        `json:"unit_price"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -148,6 +151,26 @@ func canonicalPrices(raw string) (string, []PriceOption, error) {
 	return string(encoded), options, err
 }
 
+func normalizeProductType(value string) (string, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return "coffee", nil
+	}
+	if value != "coffee" && value != "product" {
+		return "", fmt.Errorf("product_type must be coffee or product")
+	}
+	return value, nil
+}
+
+func canonicalUnitPrice(raw string) (string, float64, error) {
+	price, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || math.IsNaN(price) || math.IsInf(price, 0) || price < 0 {
+		return "", 0, fmt.Errorf("unit_price must be a valid non-negative price")
+	}
+	encoded, err := json.Marshal(map[string]float64{"unit": price})
+	return string(encoded), price, err
+}
+
 func scanCoffee(r *http.Request, row interface{ Scan(...any) error }) (Coffee, error) {
 	var c Coffee
 	var img sql.NullString
@@ -155,17 +178,26 @@ func scanCoffee(r *http.Request, row interface{ Scan(...any) error }) (Coffee, e
 	var categoryName, categoryDescription sql.NullString
 	var categorySortOrder sql.NullInt64
 	var categoryActive sql.NullBool
+	var unitPrice sql.NullFloat64
 	var quality, prices string
 	if err := row.Scan(
 		&c.ID, &c.Name, &c.Description, &quality, &prices, &c.Star, &img,
 		&categoryID, &categoryName, &categoryDescription, &categorySortOrder, &categoryActive,
+		&c.ProductType, &unitPrice,
 	); err != nil {
 		return c, err
 	}
 	c.Quality = json.RawMessage(quality)
 	c.Prices = json.RawMessage(prices)
-	options, _ := priceOptionsFromJSON(prices)
-	c.PriceOptions = options
+	c.PriceOptions = []PriceOption{}
+	if c.ProductType == "coffee" {
+		options, _ := priceOptionsFromJSON(prices)
+		c.PriceOptions = options
+	}
+	if unitPrice.Valid {
+		price := unitPrice.Float64
+		c.UnitPrice = &price
+	}
 	c.Img = imgURL(r, img)
 	if categoryID.Valid {
 		id := categoryID.Int64
@@ -180,7 +212,8 @@ func scanCoffee(r *http.Request, row interface{ Scan(...any) error }) (Coffee, e
 
 const coffeeSelect = `SELECT
 	c.id, c.name, c.description, c.quality, c.prices, c.star, c.img,
-	c.category_id, category.name, category.description, category.sort_order, category.is_active
+	c.category_id, category.name, category.description, category.sort_order, category.is_active,
+	c.product_type, c.unit_price
 	FROM api_coffee c
 	LEFT JOIN api_category category ON category.id = c.category_id`
 
@@ -303,14 +336,32 @@ func (a *App) CoffeeCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	quality := jsonOrDefault(r.FormValue("quality"), `["Medium"]`)
-	priceInput := r.FormValue("price_options")
-	if priceInput == "" {
-		priceInput = r.FormValue("prices")
-	}
-	prices, _, err := canonicalPrices(priceInput)
+	productType, err := normalizeProductType(r.FormValue("product_type"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string][]string{"price_options": {err.Error()}})
+		writeJSON(w, http.StatusBadRequest, map[string][]string{"product_type": {err.Error()}})
 		return
+	}
+	var prices string
+	var unitPrice any
+	if productType == "coffee" {
+		priceInput := r.FormValue("price_options")
+		if priceInput == "" {
+			priceInput = r.FormValue("prices")
+		}
+		prices, _, err = canonicalPrices(priceInput)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string][]string{"price_options": {err.Error()}})
+			return
+		}
+	} else {
+		var price float64
+		prices, price, err = canonicalUnitPrice(r.FormValue("unit_price"))
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string][]string{"unit_price": {err.Error()}})
+			return
+		}
+		unitPrice = price
+		quality = `[]`
 	}
 	categoryID, err := a.categoryIDFromForm(r.FormValue("category_id"), true)
 	if err != nil {
@@ -329,8 +380,8 @@ func (a *App) CoffeeCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	res, err := a.DB.Exec(
-		`INSERT INTO api_coffee (name, description, quality, prices, star, img, category_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		r.FormValue("name"), r.FormValue("description"), quality, prices, star, img, categoryID)
+		`INSERT INTO api_coffee (name, description, quality, prices, star, img, category_id, product_type, unit_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.FormValue("name"), r.FormValue("description"), quality, prices, star, img, categoryID, productType, unitPrice)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
@@ -348,8 +399,9 @@ func (a *App) CoffeeUpdate(w http.ResponseWriter, r *http.Request) {
 		notFound(w)
 		return
 	}
-	var exists int64
-	if err := a.DB.QueryRow(`SELECT id FROM api_coffee WHERE id = ?`, id).Scan(&exists); err != nil {
+	var currentType string
+	var currentUnitPrice sql.NullFloat64
+	if err := a.DB.QueryRow(`SELECT product_type, unit_price FROM api_coffee WHERE id = ?`, id).Scan(&currentType, &currentUnitPrice); err != nil {
 		notFound(w)
 		return
 	}
@@ -360,12 +412,71 @@ func (a *App) CoffeeUpdate(w http.ResponseWriter, r *http.Request) {
 
 	set := []string{}
 	args := []any{}
-	for _, f := range []string{"name", "description", "quality", "prices", "price_options", "star", "category_id"} {
-		if _, ok := r.MultipartForm.Value[f]; !ok {
-			if r.Method == http.MethodPut && (f == "name" || f == "description") {
-				writeJSON(w, http.StatusBadRequest, map[string][]string{f: {"This field is required."}})
+	if r.Method == http.MethodPut {
+		for _, field := range []string{"name", "description"} {
+			if _, ok := r.MultipartForm.Value[field]; !ok {
+				writeJSON(w, http.StatusBadRequest, map[string][]string{field: {"This field is required."}})
 				return
 			}
+		}
+	}
+
+	targetType := currentType
+	_, typeProvided := r.MultipartForm.Value["product_type"]
+	if typeProvided {
+		targetType, err = normalizeProductType(r.FormValue("product_type"))
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string][]string{"product_type": {err.Error()}})
+			return
+		}
+		set, args = append(set, "product_type = ?"), append(args, targetType)
+	}
+
+	if targetType == "product" {
+		_, unitPriceProvided := r.MultipartForm.Value["unit_price"]
+		if currentType != "product" && !unitPriceProvided {
+			writeJSON(w, http.StatusBadRequest, map[string][]string{"unit_price": {"unit_price is required for a physical product"}})
+			return
+		}
+		if unitPriceProvided {
+			prices, price, err := canonicalUnitPrice(r.FormValue("unit_price"))
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string][]string{"unit_price": {err.Error()}})
+				return
+			}
+			set, args = append(set, "prices = ?", "unit_price = ?"), append(args, prices, price)
+		}
+		if currentType != "product" {
+			set, args = append(set, "quality = ?"), append(args, `[]`)
+		}
+	} else {
+		priceInput := ""
+		_, priceOptionsProvided := r.MultipartForm.Value["price_options"]
+		_, legacyPricesProvided := r.MultipartForm.Value["prices"]
+		if priceOptionsProvided {
+			priceInput = r.FormValue("price_options")
+		} else if legacyPricesProvided {
+			priceInput = r.FormValue("prices")
+		}
+		if currentType != "coffee" && priceInput == "" {
+			writeJSON(w, http.StatusBadRequest, map[string][]string{"price_options": {"price_options is required for coffee"}})
+			return
+		}
+		if priceInput != "" {
+			prices, _, err := canonicalPrices(priceInput)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string][]string{"price_options": {err.Error()}})
+				return
+			}
+			set, args = append(set, "prices = ?"), append(args, prices)
+		}
+		if currentType != "coffee" || currentUnitPrice.Valid {
+			set = append(set, "unit_price = NULL")
+		}
+	}
+
+	for _, f := range []string{"name", "description", "quality", "star", "category_id"} {
+		if _, ok := r.MultipartForm.Value[f]; !ok {
 			continue
 		}
 		v := r.FormValue(f)
@@ -378,15 +489,8 @@ func (a *App) CoffeeUpdate(w http.ResponseWriter, r *http.Request) {
 			}
 			set, args = append(set, "star = ?"), append(args, n)
 		case "quality":
-			set, args = append(set, "quality = ?"), append(args, jsonOrDefault(v, `["Medium"]`))
-		case "prices", "price_options":
-			prices, _, err := canonicalPrices(v)
-			if err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string][]string{"price_options": {err.Error()}})
-				return
-			}
-			if !contains(set, "prices = ?") {
-				set, args = append(set, "prices = ?"), append(args, prices)
+			if targetType == "coffee" {
+				set, args = append(set, "quality = ?"), append(args, jsonOrDefault(v, `["Medium"]`))
 			}
 		case "category_id":
 			categoryID, err := a.categoryIDFromForm(v, true)

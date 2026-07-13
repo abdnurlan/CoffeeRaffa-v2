@@ -1,6 +1,6 @@
 # CoffeeRaffa Backend (Go)
 
-Go port of the former Django/DRF backend. Existing API routes, sqlite data, DRF tokens, and Django `pbkdf2_sha256` password hashes remain compatible. The catalog also supports dynamic categories and gram-based product prices.
+Go port of the former Django/DRF backend. Existing API routes, sqlite data, DRF tokens, and Django `pbkdf2_sha256` password hashes remain compatible. The catalog supports dynamic categories, gram-based coffee prices, and unit-priced physical products.
 
 ## Run
 
@@ -39,7 +39,7 @@ go run . import_coffee_data
 | DELETE | `/api/categories/{id}/delete/` | `Authorization: Token <key>` |
 | GET | `/images/<file>` | – |
 
-Product create/update requests accept a `category_id` and a JSON `price_options` field:
+Coffee create/update requests use `product_type=coffee`, a `category_id`, and a JSON `price_options` field:
 
 ```json
 [
@@ -48,4 +48,4 @@ Product create/update requests accept a `category_id` and a JSON `price_options`
 ]
 ```
 
-The legacy `prices` object remains in product responses. New clients should use the sorted `price_options` array.
+Physical products use `product_type=product` and a single `unit_price` field. They return an empty `price_options` array. The legacy `prices` object remains in every response for API compatibility.

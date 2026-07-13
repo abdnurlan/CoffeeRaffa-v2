@@ -1,11 +1,25 @@
 import { createSlice } from "@reduxjs/toolkit";
 import { toast } from "react-toastify";
-import { formatGrams, getPriceOptions } from "../utils/catalog";
+import {
+  formatGrams,
+  getPriceOptions,
+  getUnitPrice,
+  isCoffee,
+} from "../utils/catalog";
 
 const loadCart = () => {
   try {
     const saved = JSON.parse(localStorage.getItem("cartItems") || "[]");
     return saved.map((item) => {
+      if (!isCoffee(item)) {
+        return {
+          ...item,
+          priceOptions: [],
+          selectedGrams: null,
+          grammage: null,
+          price: getUnitPrice(item) ?? 0,
+        };
+      }
       const priceOptions = getPriceOptions(item);
       const legacyGrams = Number.parseInt(item.grammage, 10);
       const selectedGrams =
@@ -40,20 +54,41 @@ const cartSlice = createSlice({
       const itemIndex = state.cartItems.findIndex((item) => item.id === action.payload.id);
 
       if (itemIndex >= 0) {
-        const selected = getPriceOptions(action.payload).find(
-          (option) => option.grams === Number(action.payload.selectedGrams),
-        );
-        if (selected) {
-          state.cartItems[itemIndex].priceOptions = getPriceOptions(action.payload);
-          state.cartItems[itemIndex].selectedGrams = selected.grams;
-          state.cartItems[itemIndex].grammage = formatGrams(selected.grams);
-          state.cartItems[itemIndex].price = selected.price;
+        if (isCoffee(action.payload)) {
+          const selected = getPriceOptions(action.payload).find(
+            (option) => option.grams === Number(action.payload.selectedGrams),
+          );
+          if (selected) {
+            state.cartItems[itemIndex].priceOptions = getPriceOptions(action.payload);
+            state.cartItems[itemIndex].selectedGrams = selected.grams;
+            state.cartItems[itemIndex].grammage = formatGrams(selected.grams);
+            state.cartItems[itemIndex].price = selected.price;
+          }
+        } else {
+          state.cartItems[itemIndex].price = getUnitPrice(action.payload) ?? 0;
         }
         state.cartItems[itemIndex].cartQuantity += 1;
         toast.info("Artan məhsul miqdarı", {
           position: "top-right",
         });
       } else {
+        if (!isCoffee(action.payload)) {
+          const unitPrice = getUnitPrice(action.payload);
+          if (unitPrice === undefined) return;
+          state.cartItems.push({
+            ...action.payload,
+            cartQuantity: 1,
+            priceOptions: [],
+            selectedGrams: null,
+            grammage: null,
+            price: unitPrice,
+          });
+          toast.success("Səbətə yeni məhsul əlavə edildi", {
+            position: "top-right",
+          });
+          localStorage.setItem("cartItems", JSON.stringify(state.cartItems));
+          return;
+        }
         const priceOptions = getPriceOptions(action.payload);
         const selected =
           priceOptions.find(
@@ -115,7 +150,7 @@ const cartSlice = createSlice({
     changeGrammage(state, action) {
       const { id, grams } = action.payload;
       const itemIndex = state.cartItems.findIndex((cartItem) => cartItem.id === id);
-      if (itemIndex < 0) return;
+      if (itemIndex < 0 || !isCoffee(state.cartItems[itemIndex])) return;
       const selected = state.cartItems[itemIndex].priceOptions.find(
         (option) => option.grams === Number(grams),
       );
